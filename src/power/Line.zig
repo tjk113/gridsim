@@ -1,0 +1,115 @@
+const std = @import("std");
+const utils = @import("utils");
+const types = @import("types");
+
+const Consumer = @import("Consumer.zig");
+const Plant = @import("Plant.zig");
+const Amperage = types.Amperage;
+const Voltage = types.Voltage;
+const Ohmage = types.Ohmage;
+
+const Allocator = std.mem.Allocator;
+const Self = @This();
+
+var id_index: u64 = 0;
+
+id: u64,
+enabled: bool,
+voltage: Voltage,
+ohms_per_km: Ohmage,
+current_load: Amperage,
+plants: std.ArrayList(*Plant),
+consumers: std.ArrayList(*Consumer),
+allocator: Allocator,
+
+pub const Error = error {
+    Unpowered,
+    Overloaded
+};
+
+pub fn init(ohms_per_km: Ohmage, voltage: Voltage, allocator: Allocator) Self {
+    id_index += 1;
+    return .{
+        .id = id_index - 1,
+        .enabled = false,
+        .voltage = voltage,
+        .ohms_per_km = ohms_per_km,
+        .current_load_in_Amperage = 0.0,
+        .plants = std.ArrayList(*Plant).init(allocator),
+        .consumers = std.ArrayList(*Consumer).init(allocator),
+        .allocator = allocator
+    };
+}
+
+pub fn deinit(self: *Self) void {
+    self.plants.deinit();
+    self.consumers.deinit();
+}
+
+pub fn connectToPlant(self: *Self, plant: *Plant) !void {
+    try self.plants.append(plant);
+    plant.addLine(self);
+}
+
+pub fn disconnectFromPlant(self: *Self, plant: *Plant) void {
+    for (0.., self.plants.items) |i, item| {
+        if (plant == item) {
+            _ = self.plants.swapRemove(i);
+            plant.removeLine(self);
+            break;
+        }
+    }
+}
+
+pub fn connectToConsumer(self: *Self, consumer: *Consumer) !void {
+    try self.consumers.append(consumer);
+}
+
+pub fn disconnectFromConsumer(self: *Self, consumer: *Consumer) void {
+    for (0.., self.consumers.items) |i, item| {
+        if (consumer == item) {
+            _ = self.consumers.swapRemove(i);
+            break;
+        }
+    }
+}
+
+pub fn enable(self: *Self) void {
+    self.enabled = true;
+}
+
+pub fn disable(self: *Self) void {
+    self.enabled = false;
+}
+
+pub fn hasPower(self: Self) bool {
+    const hasGeneratingPlant = blk: {
+        for (self.plants.items) |plant| {
+            if (plant.generating) {
+                break :blk true;
+            }
+        }
+        break :blk false;
+    };
+    return self.enabled and hasGeneratingPlant;
+}
+
+pub fn addLoad(self: *Self, load: Amperage) !void {
+    const max_load = try utils.convert(
+        .Amperage,
+        .{
+            .volts = self.voltage,
+            .ohms = self.ohms_per_km
+        }
+    );
+
+    if (self.current_load + load > max_load) {
+        return Error.Overloaded;
+    }
+
+    self.current_load += load;
+}
+
+pub fn removeLoad(self: *Self, load: Amperage) void {
+    self.current_load = @min(self.current_load - load, 0);
+}
