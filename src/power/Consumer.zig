@@ -14,6 +14,11 @@ id: u64,
 line: ?*Line,
 power_usage: Wattage,
 
+pub const Error = error {
+    NotConnected,
+    AlreadyConnected
+};
+
 pub fn init(line: ?*Line) Self {
     id_index += 1;
     return .{
@@ -21,6 +26,20 @@ pub fn init(line: ?*Line) Self {
         .line = line,
         .power_usage = 0.0,
     };
+}
+
+pub fn connect(self: *Self, line: *Line) !void {
+    if (self.line != null) {
+        return Error.AlreadyConnected;
+    }
+    self.line = line;
+}
+
+pub fn disconnect(self: *Self) !void {
+    if (self.line == null) {
+        return Error.NotConnected;
+    }
+    self.line = null;
 }
 
 pub fn isConnected(self: Self) bool {

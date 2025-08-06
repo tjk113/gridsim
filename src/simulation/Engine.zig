@@ -1,10 +1,12 @@
 const std = @import("std");
+const log = @import("log");
 const types = @import("types");
 const power = @import("power");
 
 const Spec = @import("Spec.zig");
 const Hertz = types.Hertz;
 const Vec2f = types.Vec2f;
+const Time = types.Time;
 
 const Allocator = std.mem.Allocator;
 const Self = @This();
@@ -26,9 +28,11 @@ const Node = struct {
 
 id: u64,
 spec: Spec,
+grid: power.Grid,
+current_time: Time,
+log_level: Spec.Event.Severity,
 nodes: std.StringHashMap(Node),
 lines: std.StringHashMap(*power.Line),
-grid: power.Grid,
 allocator: Allocator,
 
 fn initNodeFromSpec(self: *Self, spec_node_name: []const u8, spec: Spec) !Node {
@@ -158,11 +162,13 @@ fn initGridFromSpec(self: *Self, spec: Spec) !void {
     }
 }
 
-pub fn init(id: u64, spec: Spec, allocator: Allocator) !Self {
+pub fn init(id: u64, spec: Spec, log_level: Spec.Event.Severity, allocator: Allocator) !Self {
     var self = Self {
         .id = id,
         .spec = spec,
         .grid = undefined,
+        .log_level = log_level,
+        .current_time = .{.hour = 0, .minute = 0},
         .nodes = std.StringHashMap(Node).init(allocator),
         .lines = std.StringHashMap(*power.Line).init(allocator),
         .allocator = allocator
@@ -193,6 +199,55 @@ pub fn deinit(self: *Self) void {
     self.lines.deinit();
 }
 
+fn runLineFailure(self: *Self, event: Spec.Event) !void {
+    var line = self.lines.get(event.source).?;
+    line.disable();
+}
+
+fn runConsumerDisconnect(self: *Self, event: Spec.Event) !void {
+    var consumer = self.nodes.get(event.source).?;
+    try consumer.ptr.consumer.disconnect();
+}
+
+fn runEvent(self: *Self, event: Spec.Event) !void {
+    switch (event.kind) {
+        .LineFailure => {
+            try self.runLineFailure(event);
+        },
+        .ConsumerDisconnect => {
+            try self.runConsumerDisconnect(event);
+        },
+        else => { return error.Unimplemented; }
+    }
+}
+
+fn logEvent(self: Self, event: Spec.Event) void {
+    const time = self.current_time.allocPrint(self.allocator) catch unreachable;
+    defer self.allocator.free(time);
+    switch (event.severity) {
+        .None => {
+            log.info(
+                "at {s}, {s} had an event ({s})",
+                .{time, event.source, @tagName(event.kind)}
+            );
+        },
+        else => {
+            log.info(
+                "at {s}, {s} had an event of {s} severity ({s})",
+                .{time, event.source, @tagName(event.severity), @tagName(event.kind)}
+            );
+        }
+    }
+}
+
 pub fn step(self: *Self) !void {
-    _ = self;
+    for (self.spec.events) |event| {
+        if (event.time.eql(self.current_time)) {
+            try self.runEvent(event);
+            if (@intFromEnum(event.severity) >= @intFromEnum(self.log_level)) {
+                self.logEvent(event);
+            }
+        }
+    }
+    self.current_time.addMinute();
 }

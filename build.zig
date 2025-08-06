@@ -25,16 +25,18 @@ pub fn build(b: *std.Build) void {
     });
     utils.addImport("types", types);
 
+    const log = b.addModule("log", .{
+        .root_source_file = b.path("src/log.zig")
+    });
+
     const simulation = b.addModule("simulation", .{
         .root_source_file = b.path("src/simulation/simulation.zig")
     });
+    simulation.addImport("log", log);
     simulation.addImport("types", types);
     simulation.addImport("power", power);
     simulation.addImport("utils", utils);
 
-    const log = b.addModule("log", .{
-        .root_source_file = b.path("src/log.zig")
-    });
 
     exe.root_module.addImport("log", log);
     exe.root_module.addImport("power", power);

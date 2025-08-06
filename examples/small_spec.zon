@@ -1,40 +1,29 @@
 .{
     .name = "small spec",
     .config = .{
-        .frequency = 60.0
+        .frequency = 60.0,
+        .profile = .RegularActivity
     },
     .nodes = .{
         .{
             .kind = .Plant,
             .name = "main_plant",
-            .pos = .{
-                .x = 10.0,
-                .y = -5.0
-            }
+            .pos = .{.x = 10.0, .y = -5.0}
         },
         .{
             .kind = .Substation,
             .name = "main_substation",
-            .pos = .{
-                .x = -2.0,
-                .y = 0.0
-            }
+            .pos = .{.x = -2.0, .y = 0.0}
         },
         .{
             .kind = .Consumer,
             .name = "house_1",
-            .pos = .{
-                .x = 1.0,
-                .y = 0.0
-            }
+            .pos = .{.x = 1.0, .y = 0.0}
         },
         .{
             .kind = .Consumer,
             .name = "house_2",
-            .pos = .{
-                .x = -6.0,
-                .y = -9.0
-            }
+            .pos = .{.x = -6.0, .y = -9.0}
         }
     },
     .lines = .{
@@ -64,6 +53,20 @@
             .from = "main_substation",
             .through = "distrib_line",
             .to = "house_2"
+        }
+    },
+    .events = .{
+        .{
+            .severity = .Medium,
+            .time = .{.hour = 1, .minute = 23},
+            .kind = .LineFailure,
+            .source = "distrib_line"
+        },
+        .{
+            .severity = .None,
+            .time = .{.hour = 3, .minute = 48},
+            .kind = .ConsumerDisconnect,
+            .source = "house_2"
         }
     }
 }
