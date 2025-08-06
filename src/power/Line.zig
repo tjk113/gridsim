@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("utils");
 const types = @import("types");
 
+const Substation = @import("Substation.zig");
 const Consumer = @import("Consumer.zig");
 const Plant = @import("Plant.zig");
 const Amperage = types.Amperage;
@@ -19,6 +20,7 @@ voltage: Voltage,
 ohms_per_km: Ohmage,
 current_load: Amperage,
 plants: std.ArrayList(*Plant),
+substations: std.ArrayList(*Substation),
 consumers: std.ArrayList(*Consumer),
 allocator: Allocator,
 
@@ -34,8 +36,9 @@ pub fn init(ohms_per_km: Ohmage, voltage: Voltage, allocator: Allocator) Self {
         .enabled = false,
         .voltage = voltage,
         .ohms_per_km = ohms_per_km,
-        .current_load_in_Amperage = 0.0,
+        .current_load = 0.0,
         .plants = std.ArrayList(*Plant).init(allocator),
+        .substations = std.ArrayList(*Substation).init(allocator),
         .consumers = std.ArrayList(*Consumer).init(allocator),
         .allocator = allocator
     };
@@ -43,19 +46,31 @@ pub fn init(ohms_per_km: Ohmage, voltage: Voltage, allocator: Allocator) Self {
 
 pub fn deinit(self: *Self) void {
     self.plants.deinit();
+    self.substations.deinit();
     self.consumers.deinit();
 }
 
 pub fn connectToPlant(self: *Self, plant: *Plant) !void {
     try self.plants.append(plant);
-    plant.addLine(self);
 }
 
 pub fn disconnectFromPlant(self: *Self, plant: *Plant) void {
     for (0.., self.plants.items) |i, item| {
         if (plant == item) {
             _ = self.plants.swapRemove(i);
-            plant.removeLine(self);
+            break;
+        }
+    }
+}
+
+pub fn connectToSubstation(self: *Self, substation: *Substation) !void {
+    try self.substations.append(substation);
+}
+
+pub fn disconnectFromSubstation(self: *Self, substation: *Substation) void {
+    for (0.., self.substations.items) |i, item| {
+        if (substation == item) {
+            _ = self.substations.swapRemove(i);
             break;
         }
     }

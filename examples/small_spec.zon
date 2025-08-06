@@ -1,0 +1,69 @@
+.{
+    .name = "small spec",
+    .config = .{
+        .frequency = 60.0
+    },
+    .nodes = .{
+        .{
+            .kind = .Plant,
+            .name = "main_plant",
+            .pos = .{
+                .x = 10.0,
+                .y = -5.0
+            }
+        },
+        .{
+            .kind = .Substation,
+            .name = "main_substation",
+            .pos = .{
+                .x = -2.0,
+                .y = 0.0
+            }
+        },
+        .{
+            .kind = .Consumer,
+            .name = "house_1",
+            .pos = .{
+                .x = 1.0,
+                .y = 0.0
+            }
+        },
+        .{
+            .kind = .Consumer,
+            .name = "house_2",
+            .pos = .{
+                .x = -6.0,
+                .y = -9.0
+            }
+        }
+    },
+    .lines = .{
+        .{
+            .name = "main_line",
+            .ohms_per_km = 0.05,
+            .voltage = 345000.0
+        },
+        .{
+            .name = "distrib_line",
+            .ohms_per_km = 0.05,
+            .voltage = 120.0
+        }
+    },
+    .connections = .{
+        .{
+            .from = "main_plant",
+            .through = "main_line",
+            .to = "main_substation"
+        },
+        .{
+            .from = "main_substation",
+            .through = "distrib_line",
+            .to = "house_1"
+        },
+        .{
+            .from = "main_substation",
+            .through = "distrib_line",
+            .to = "house_2"
+        }
+    }
+}
