@@ -11,11 +11,6 @@ const Time = types.Time;
 const Allocator = std.mem.Allocator;
 const Self = @This();
 
-const Parameters = struct {
-    frequency: Hertz,
-    nodes: []Node
-};
-
 const Node = struct {
     name: []const u8,
     pos: Vec2f,
@@ -35,6 +30,88 @@ nodes: std.StringHashMap(Node),
 lines: std.StringHashMap(*power.Line),
 allocator: Allocator,
 
+fn initPlantFromSpec(self: Self, spec_node_name: []const u8, spec: Spec) !*power.Plant {
+    var line: ?*power.Line = null;
+
+    // Find the line that the power plant feeds.
+    outer: for (spec.connections) |connection| {
+        // Power plants should only ever occupy
+        // the `from` field of a connection.
+        if (std.mem.eql(u8, connection.from, spec_node_name)) {
+            for (spec.lines) |spec_line| {
+                if (std.mem.eql(u8, spec_line.name, connection.through)) {
+                    line = self.lines.get(spec_line.name);
+                    break :outer;
+                }
+            }
+        }
+    }
+    if (line == null) {
+        return error.LineNotFound;
+    }
+
+    const plant = try self.allocator.create(power.Plant);
+    plant.* = power.Plant.init(line.?);
+    try line.?.connectToPlant(plant);
+
+    return plant;
+}
+
+fn initSubstationFromSpec(self: Self, spec_node_name: []const u8, spec: Spec) !*power.Substation {
+    var in_line: ?*power.Line = null;
+    var out_line: ?*power.Line = null;
+
+    // Find the in and out lines of the substation.
+    for (spec.connections) |connection| {
+        if (std.mem.eql(u8, connection.to, spec_node_name)) {
+            in_line = self.lines.get(connection.through);
+        }
+        else if (std.mem.eql(u8, connection.from, spec_node_name)) {
+            out_line = self.lines.get(connection.through);
+        }
+        if (in_line != null and out_line != null) {
+            break;
+        }
+    }
+    if (in_line == null or out_line == null) {
+        return error.LineNotFound;
+    }
+
+    const substation = try self.allocator.create(power.Substation);
+    substation.* = power.Substation.init(in_line.?, out_line.?);
+    try in_line.?.connectToSubstation(substation);
+    try out_line.?.connectToSubstation(substation);
+
+    return substation;
+}
+
+fn initConsumerFromSpec(self: Self, spec_node_name: []const u8, spec: Spec) !*power.Consumer {
+    var line: ?*power.Line = null;
+
+    // Find the line that feeds the consumer.
+    outer: for (spec.connections) |connection| {
+        // Consumers should only ever occupy
+        // the `to` field of a connection.
+        if (std.mem.eql(u8, connection.to, spec_node_name)) {
+            for (spec.lines) |spec_line| {
+                if (std.mem.eql(u8, spec_line.name, connection.through)) {
+                    line = self.lines.get(spec_line.name);
+                    break :outer;
+                }
+            }
+        }
+    }
+    if (line == null) {
+        return error.LineNotFound;
+    }
+
+    const consumer = try self.allocator.create(power.Consumer);
+    consumer.* = power.Consumer.init(line);
+    try line.?.connectToConsumer(consumer);
+
+    return consumer;
+}
+
 fn initNodeFromSpec(self: *Self, spec_node_name: []const u8, spec: Spec) !Node {
     var node: Node = undefined;
     var spec_node: Spec.Node = undefined;
@@ -50,82 +127,15 @@ fn initNodeFromSpec(self: *Self, spec_node_name: []const u8, spec: Spec) !Node {
     node.pos = spec_node.pos;
     switch (spec_node.kind) {
         .Plant => {
-            var line: ?*power.Line = null;
-
-            // Find the line that the power plant feeds.
-            outer: for (spec.connections) |connection| {
-                // Power plants should only ever occupy
-                // the `from` field of a connection.
-                if (std.mem.eql(u8, connection.from, spec_node_name)) {
-                    for (spec.lines) |spec_line| {
-                        if (std.mem.eql(u8, spec_line.name, connection.through)) {
-                            line = self.lines.get(spec_line.name);
-                            break :outer;
-                        }
-                    }
-                }
-            }
-            if (line == null) {
-                return error.LineNotFound;
-            }
-
-            const plant = try self.allocator.create(power.Plant);
-            plant.* = power.Plant.init(line.?);
-            try line.?.connectToPlant(plant);
-
+            const plant = try self.initPlantFromSpec(spec_node_name, spec);
             node.ptr = .{.plant = plant};
         },
         .Substation => {
-            var in_line: ?*power.Line = null;
-            var out_line: ?*power.Line = null;
-
-            // Find the in and out lines of the substation.
-            for (spec.connections) |connection| {
-                if (std.mem.eql(u8, connection.to, spec_node_name)) {
-                    in_line = self.lines.get(connection.through);
-                }
-                else if (std.mem.eql(u8, connection.from, spec_node_name)) {
-                    out_line = self.lines.get(connection.through);
-                }
-                if (in_line != null and out_line != null) {
-                    break;
-                }
-            }
-            if (in_line == null or out_line == null) {
-                return error.LineNotFound;
-            }
-
-            const substation = try self.allocator.create(power.Substation);
-            substation.* = power.Substation.init(in_line.?, out_line.?);
-            try in_line.?.connectToSubstation(substation);
-            try out_line.?.connectToSubstation(substation);
-
+            const substation = try self.initSubstationFromSpec(spec_node_name, spec);
             node.ptr = .{.substation = substation};
         },
         .Consumer => {
-            var line: ?*power.Line = null;
-
-            // Find the line that feeds the consumer.
-            outer: for (spec.connections) |connection| {
-                // Consumers should only ever occupy
-                // the `to` field of a connection.
-                if (std.mem.eql(u8, connection.to, spec_node_name)) {
-                    for (spec.lines) |spec_line| {
-                        if (std.mem.eql(u8, spec_line.name, connection.through)) {
-                            line = self.lines.get(spec_line.name);
-                            break :outer;
-                        }
-                    }
-                }
-            }
-            if (line == null) {
-                return error.LineNotFound;
-            }
-
-            const consumer = try self.allocator.create(power.Consumer);
-            consumer.* = power.Consumer.init(line);
-            try line.?.connectToConsumer(consumer);
-
+            const consumer = try self.initConsumerFromSpec(spec_node_name, spec);
             node.ptr = .{.consumer = consumer};
         }
     }
