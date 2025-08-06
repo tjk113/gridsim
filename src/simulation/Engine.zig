@@ -15,6 +15,7 @@ const Parameters = struct {
 };
 
 const Node = struct {
+    name: []const u8,
     pos: Vec2f,
     ptr: union(enum) {
         plant: *power.Plant,
@@ -41,6 +42,7 @@ fn initNodeFromSpec(self: *Self, spec_node_name: []const u8, spec: Spec) !Node {
         }
     }
 
+    node.name = spec_node_name;
     node.pos = spec_node.pos;
     switch (spec_node.kind) {
         .Plant => {
@@ -137,7 +139,7 @@ fn initGridFromSpec(self: *Self, spec: Spec) !void {
         line.* = power.Line.init(spec_line.ohms_per_km, spec_line.voltage, self.allocator);
 
         try self.lines.put(spec_line.name, line);
-        try self.grid.addLine(line.*);
+        try self.grid.addLine(line);
     }
 
     for (spec.nodes) |spec_node| {
@@ -146,10 +148,10 @@ fn initGridFromSpec(self: *Self, spec: Spec) !void {
         try self.nodes.put(spec_node.name, node);
         switch (spec_node.kind) {
             .Plant => {
-                try self.grid.addPlant(node.ptr.plant.*);
+                try self.grid.addPlant(node.ptr.plant);
             },
             .Substation => {
-                try self.grid.addSubstation(node.ptr.substation.*);
+                try self.grid.addSubstation(node.ptr.substation);
             },
             else => {}
         }
