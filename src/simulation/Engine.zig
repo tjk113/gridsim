@@ -245,7 +245,7 @@ fn logEvent(self: Self, event: Spec.Event) void {
             );
         },
         else => {
-            log.info(
+            log.warn(
                 "at {s}, {s} had an event of {s} severity ({s})",
                 .{time, event.source, @tagName(event.severity), @tagName(event.kind)}
             );
