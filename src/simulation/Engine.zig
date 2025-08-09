@@ -25,6 +25,7 @@ id: u64,
 spec: Spec,
 grid: power.Grid,
 current_time: Time,
+random: std.Random,
 log_level: Spec.Event.Severity,
 nodes: std.StringHashMap(Node),
 lines: std.StringHashMap(*power.Line),
@@ -172,11 +173,13 @@ fn initGridFromSpec(self: *Self, spec: Spec) !void {
     }
 }
 
-pub fn init(id: u64, spec: Spec, log_level: Spec.Event.Severity, allocator: Allocator) !Self {
+pub fn init(id: u64, seed: u64, spec: Spec, log_level: Spec.Event.Severity, allocator: Allocator) !Self {
+    var prng = std.Random.DefaultPrng.init(seed);
     var self = Self {
         .id = id,
         .spec = spec,
         .grid = undefined,
+        .random = prng.random(),
         .log_level = log_level,
         .current_time = .{.hour = 0, .minute = 0},
         .nodes = std.StringHashMap(Node).init(allocator),

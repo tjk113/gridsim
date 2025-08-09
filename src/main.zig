@@ -27,15 +27,12 @@ pub fn main() !void {
     log.info("Loaded specification \"{s}\"", .{spec.name});
 
     log.info("Building simulation", .{});
-    var sim = try simulation.Engine.init(0, spec, .None, allocator);
+    var sim = try simulation.Engine.init(0, spec, .None, 5, allocator);
     defer sim.deinit();
 
     log.info("Starting simulation", .{});
     const duration_in_minutes = 24 * 60;
-    for (0..duration_in_minutes) |minute| {
-        if (minute % 60 == 0) {
-            std.debug.print("Hour {d}\n", .{minute / 60});
-        }
+    for (0..duration_in_minutes) |_| {
         try sim.step();
     }
     log.info("Simulation complete", .{});
