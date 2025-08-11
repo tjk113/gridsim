@@ -263,22 +263,22 @@ fn runFailure(self: *Self, event: Spec.Event) !void {
     }
 
     if (line) |line_val| {
-        if (line_fail_fn != null) {
-            line_fail_fn.?(line_val);
+        if (line_fail_fn) |line_fail| {
+            line_fail(line_val);
         }
         line_val.fail();
     }
     else if (node) |node_val| {
         switch (node_val.ptr) {
             .plant => |ptr| {
-                if (plant_fail_fn != null) {
-                    plant_fail_fn.?(ptr);
+                if (plant_fail_fn) |plant_fail| {
+                    plant_fail(ptr);
                 }
                 ptr.fail();
             },
             .substation => |ptr| {
-                if (substation_fail_fn != null) {
-                    substation_fail_fn.?(ptr);
+                if (substation_fail_fn) |substation_fail| {
+                    substation_fail(ptr);
                 }
                 ptr.fail();
             },
