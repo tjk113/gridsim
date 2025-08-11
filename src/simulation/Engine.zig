@@ -243,14 +243,46 @@ pub fn deinit(self: *Self) void {
 fn runFailure(self: *Self, event: Spec.Event) !void {
     const line = self.lines.get(event.source);
     const node = self.nodes.get(event.source);
+
+    var plant_fail_fn: ?*const fn(*power.Plant) void = null;
+    var substation_fail_fn: ?*const fn(*power.Substation) void = null;
+    var line_fail_fn: ?*const fn(*power.Line) void = null;
+
+    switch (self.spec.config.failure_action) {
+        .None => {},
+        .Restart => {
+            plant_fail_fn = power.Plant.startUp;
+            substation_fail_fn = power.Substation.enable;
+            line_fail_fn = power.Line.enable;
+        },
+        .ShutDown => {
+            plant_fail_fn = power.Plant.shutDown;
+            substation_fail_fn = power.Substation.disable;
+            line_fail_fn = power.Line.disable;
+        }
+    }
+
     if (line) |line_val| {
+        if (line_fail_fn != null) {
+            line_fail_fn.?(line_val);
+        }
         line_val.fail();
     }
     else if (node) |node_val| {
         switch (node_val.ptr) {
-            .plant => |ptr| ptr.fail(),
-            .substation => |ptr| ptr.fail(),
-            .consumer => { return; }
+            .plant => |ptr| {
+                if (plant_fail_fn != null) {
+                    plant_fail_fn.?(ptr);
+                }
+                ptr.fail();
+            },
+            .substation => |ptr| {
+                if (substation_fail_fn != null) {
+                    substation_fail_fn.?(ptr);
+                }
+                ptr.fail();
+            },
+            .consumer => {}
         }
     }
 }
