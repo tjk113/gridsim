@@ -22,12 +22,22 @@ pub fn main() !void {
 
     const spec_path = "examples/small_spec.zon";
     log.info("Loading specification from \"{s}\"", .{spec_path});
-    const spec = try simulation.Spec.loadFromFile(spec_path, allocator);
+    const spec = try utils.loadFromZonFile(simulation.Spec, spec_path, allocator);
     defer std.zon.parse.free(allocator, spec);
     log.info("Loaded specification \"{s}\"", .{spec.name});
 
     log.info("Building simulation", .{});
-    var sim = try simulation.Engine.init(0, spec, .None, 5, allocator);
+    var seed: u64 = undefined;
+    try std.posix.getrandom(std.mem.asBytes(&seed));
+    log.info("Using seed {}", .{seed});
+    var sim = try simulation.Engine.init(
+        0,
+        @intCast(seed),
+        spec,
+        .None,
+        null,
+        allocator
+    );
     defer sim.deinit();
 
     log.info("Starting simulation", .{});
@@ -35,6 +45,7 @@ pub fn main() !void {
     for (0..duration_in_minutes) |_| {
         try sim.step();
     }
+    sim.printState();
     log.info("Simulation complete", .{});
 
     // const result = try utils.convert(.Amperage, .{.volts = 1.0, .watts = 100.0});

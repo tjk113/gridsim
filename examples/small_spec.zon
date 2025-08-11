@@ -2,7 +2,8 @@
     .name = "small spec",
     .config = .{
         .frequency = 60.0,
-        .profile = .RegularActivity
+        .profile = .RegularActivity,
+        .failure_action = .ShutDown
     },
     .nodes = .{
         .{
@@ -59,13 +60,13 @@
         .{
             .severity = .Medium,
             .time = .{.hour = 1, .minute = 23},
-            .kind = .LineFailure,
+            .kind = .Failure,
             .source = "distrib_line"
         },
         .{
             .severity = .None,
             .time = .{.hour = 3, .minute = 48},
-            .kind = .ConsumerDisconnect,
+            .kind = .Disconnect,
             .source = "house_2"
         }
     }

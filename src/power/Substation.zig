@@ -11,6 +11,7 @@ var id_index: u64 = 0;
 
 id: u64,
 enabled: bool,
+had_failure: bool,
 in_line: *Line,
 out_line: *Line,
 /// Negative values indicate a step-down transformer;
@@ -21,11 +22,16 @@ pub fn init(in_line: *Line, out_line: *Line) Self {
     id_index += 1;
     return .{
         .id = id_index - 1,
-        .enabled = false,
+        .enabled = true,
+        .had_failure = false,
         .in_line = in_line,
         .out_line = out_line,
         .transformer_delta = out_line.voltage - in_line.voltage
     };
+}
+
+pub fn fail(self: *Self) void {
+    self.had_failure = true;
 }
 
 pub fn enable(self: *Self) void {

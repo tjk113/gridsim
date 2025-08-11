@@ -4,6 +4,7 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 
+pub const Percentage = u64;
 pub const Amperage = f64;
 pub const Voltage = f64;
 pub const Wattage = f64;
@@ -37,7 +38,7 @@ pub const Time = struct {
     pub fn allocPrint(self: Self, allocator: Allocator) ![]u8 {
         return try std.fmt.allocPrint(
             allocator,
-            "{d:0>}:{d:0>}",
+            "{d:0>2}:{d:0>2}",
             .{self.hour, self.minute}
         );
     }

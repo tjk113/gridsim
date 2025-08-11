@@ -9,6 +9,7 @@ const Self = @This();
 var id_index: u64 = 0;
 
 id: u64,
+had_failure: bool,
 isGenerating: bool,
 line: *Line,
 
@@ -16,9 +17,14 @@ pub fn init(line: *Line) Self {
     id_index += 1;
     return .{
         .id = id_index - 1,
-        .isGenerating = false,
+        .had_failure = false,
+        .isGenerating = true,
         .line = line,
     };
+}
+
+pub fn fail(self: *Self) void {
+    self.had_failure = true;
 }
 
 pub fn startUp(self: *Self) void {

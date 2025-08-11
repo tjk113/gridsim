@@ -1,0 +1,14 @@
+.{
+    .plant = .{
+        .fail = 1
+    },
+    .substation = .{
+        .fail = 1
+    },
+    .line = .{
+        .fail = 3
+    },
+    .consumer = .{
+        .use_power = 20
+    }
+}

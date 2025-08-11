@@ -1,6 +1,8 @@
 const std = @import("std");
 const types = @import("types");
+const utils = @import("utils");
 
+const Profile = @import("Profile.zig").Profile;
 const Voltage = types.Voltage;
 const Ohmage = types.Ohmage;
 const Hertz = types.Hertz;
@@ -22,15 +24,16 @@ pub const Node = struct {
     pos: Vec2f
 };
 
-pub const Profile = enum {
-    LowActivity,
-    RegularActivity,
-    HighActivity
+pub const FailureAction = enum {
+    None,
+    Restart,
+    ShutDown
 };
 
 pub const Config = struct {
     frequency: Hertz,
-    profile: Profile
+    profile: Profile,
+    failure_action: FailureAction
 };
 
 pub const Line = struct {
@@ -55,10 +58,8 @@ pub const Event = struct {
     };
 
     pub const Kind = enum {
-        LineFailure,
-        PlantFailure,
-        SubstationFailure,
-        ConsumerDisconnect
+        Failure,
+        Disconnect
     };
 
     severity: Severity,
@@ -73,13 +74,3 @@ nodes: []Node,
 lines: []Line,
 connections: []Connection,
 events: []Event,
-
-pub fn loadFromFile(path: []const u8, allocator: Allocator) !Self {
-    const src_file = try std.fs.cwd().openFile(path, .{});
-    defer src_file.close();
-
-    const src = try src_file.readToEndAlloc(allocator, 4096);
-    defer allocator.free(src);
-
-    return try std.zon.parse.fromSlice(Self, allocator, @ptrCast(src), null, .{});
-}

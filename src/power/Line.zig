@@ -16,6 +16,7 @@ var id_index: u64 = 0;
 
 id: u64,
 enabled: bool,
+had_failure: bool,
 voltage: Voltage,
 ohms_per_km: Ohmage,
 current_load: Amperage,
@@ -33,7 +34,8 @@ pub fn init(ohms_per_km: Ohmage, voltage: Voltage, allocator: Allocator) Self {
     id_index += 1;
     return .{
         .id = id_index - 1,
-        .enabled = false,
+        .enabled = true,
+        .had_failure = false,
         .voltage = voltage,
         .ohms_per_km = ohms_per_km,
         .current_load = 0.0,
@@ -48,6 +50,10 @@ pub fn deinit(self: *Self) void {
     self.plants.deinit();
     self.substations.deinit();
     self.consumers.deinit();
+}
+
+pub fn fail(self: *Self) void {
+    self.had_failure = true;
 }
 
 pub fn connectToPlant(self: *Self, plant: *Plant) !void {
@@ -100,7 +106,7 @@ pub fn disable(self: *Self) void {
 pub fn hasPower(self: Self) bool {
     const hasGeneratingPlant = blk: {
         for (self.plants.items) |plant| {
-            if (plant.generating) {
+            if (plant.isGenerating) {
                 break :blk true;
             }
         }

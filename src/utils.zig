@@ -9,6 +9,8 @@ const Wattage = types.Wattage;
 const Ohmage = types.Ohmage;
 const Unit = types.Unit;
 
+const Allocator = std.mem.Allocator;
+
 pub const TargetType = enum {
     Ohmage,
     Amperage,
@@ -127,6 +129,16 @@ pub fn convert(target: TargetType, parameters: ConversionParameters) ConversionE
         .Voltage => try calculateVoltage(parameters),
         .Wattage => try calculateWattage(parameters)
     };
+}
+
+pub fn loadFromZonFile(T: type, path: []const u8, allocator: Allocator) !T {
+    const src_file = try std.fs.cwd().openFile(path, .{});
+    defer src_file.close();
+
+    const src = try src_file.readToEndAlloc(allocator, 4096);
+    defer allocator.free(src);
+
+    return try std.zon.parse.fromSlice(T, allocator, @ptrCast(src), null, .{});
 }
 
 // TODO: Exhaustive tests

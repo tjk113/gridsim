@@ -3,6 +3,8 @@ const log = @import("log");
 const types = @import("types");
 const power = @import("power");
 
+const Probabilities = @import("Probabilities.zig");
+const Percentage = types.Percentage;
 const Spec = @import("Spec.zig");
 const Hertz = types.Hertz;
 const Vec2f = types.Vec2f;
@@ -18,17 +20,27 @@ const Node = struct {
         plant: *power.Plant,
         substation: *power.Substation,
         consumer: *power.Consumer,
+    },
+
+    pub fn isActive(self: Node) bool {
+        return switch (self.ptr) {
+            .plant => |ptr| ptr.isGenerating,
+            .substation => |ptr| ptr.enabled,
+            .consumer => |ptr| ptr.hasPower()
+        };
     }
 };
 
 id: u64,
 spec: Spec,
 grid: power.Grid,
-current_time: Time,
-random: std.Random,
+current_time: Time = .{.hour = 0, .minute = 0},
+prng: std.Random.DefaultPrng,
+probabilities: Probabilities,
 log_level: Spec.Event.Severity,
 nodes: std.StringHashMap(Node),
 lines: std.StringHashMap(*power.Line),
+events: std.ArrayList(Spec.Event),
 allocator: Allocator,
 
 fn initPlantFromSpec(self: Self, spec_node_name: []const u8, spec: Spec) !*power.Plant {
@@ -173,26 +185,42 @@ fn initGridFromSpec(self: *Self, spec: Spec) !void {
     }
 }
 
-pub fn init(id: u64, seed: u64, spec: Spec, log_level: Spec.Event.Severity, allocator: Allocator) !Self {
-    var prng = std.Random.DefaultPrng.init(seed);
+pub fn init(id: u64,
+            seed: u64,
+            spec: Spec,
+            log_level: Spec.Event.Severity,
+            start_time: ?Time,
+            allocator: Allocator
+) !Self {
     var self = Self {
         .id = id,
         .spec = spec,
         .grid = undefined,
-        .random = prng.random(),
+        .prng = std.Random.DefaultPrng.init(seed),
         .log_level = log_level,
-        .current_time = .{.hour = 0, .minute = 0},
+        .probabilities = spec.config.profile.getProbabilities(),
         .nodes = std.StringHashMap(Node).init(allocator),
         .lines = std.StringHashMap(*power.Line).init(allocator),
+        .events = std.ArrayList(Spec.Event).init(allocator),
         .allocator = allocator
     };
+
     try self.initGridFromSpec(spec);
+
+    for (spec.events) |event| {
+        try self.events.append(event);
+    }
+
+    if (start_time) |start_time_val| {
+        self.current_time = start_time_val;
+    }
 
     return self;
 }
 
 pub fn deinit(self: *Self) void {
     self.grid.deinit();
+    self.events.deinit();
 
     var node_iter = self.nodes.valueIterator();
     while (node_iter.next()) |node| {
@@ -212,25 +240,30 @@ pub fn deinit(self: *Self) void {
     self.lines.deinit();
 }
 
-fn runLineFailure(self: *Self, event: Spec.Event) !void {
-    var line = self.lines.get(event.source).?;
-    line.disable();
+fn runFailure(self: *Self, event: Spec.Event) !void {
+    const line = self.lines.get(event.source);
+    const node = self.nodes.get(event.source);
+    if (line) |line_val| {
+        line_val.fail();
+    }
+    else if (node) |node_val| {
+        switch (node_val.ptr) {
+            .plant => |ptr| ptr.fail(),
+            .substation => |ptr| ptr.fail(),
+            .consumer => { return; }
+        }
+    }
 }
 
-fn runConsumerDisconnect(self: *Self, event: Spec.Event) !void {
+fn runDisconnect(self: *Self, event: Spec.Event) !void {
     var consumer = self.nodes.get(event.source).?;
     try consumer.ptr.consumer.disconnect();
 }
 
 fn runEvent(self: *Self, event: Spec.Event) !void {
     switch (event.kind) {
-        .LineFailure => {
-            try self.runLineFailure(event);
-        },
-        .ConsumerDisconnect => {
-            try self.runConsumerDisconnect(event);
-        },
-        else => { return error.Unimplemented; }
+        .Failure => try self.runFailure(event),
+        .Disconnect => try self.runDisconnect(event)
     }
 }
 
@@ -240,21 +273,118 @@ fn logEvent(self: Self, event: Spec.Event) void {
     switch (event.severity) {
         .None => {
             log.info(
-                "at {s}, {s} had an event ({s})",
+                "at {s}, \"{s}\" had an event ({s})",
                 .{time, event.source, @tagName(event.kind)}
             );
         },
         else => {
             log.warn(
-                "at {s}, {s} had an event of {s} severity ({s})",
+                "at {s}, \"{s}\" had an event of {s} severity ({s})",
                 .{time, event.source, @tagName(event.severity), @tagName(event.kind)}
             );
         }
     }
 }
 
+fn percentageToSeverity(val: Percentage) Spec.Event.Severity {
+    return 
+        if (val < 20)
+            .Low
+        else if (val < 50)
+            .Medium
+        else if (val < 80)
+            .High
+        else
+            .Extreme;
+}
+
+fn checkNodeFailures(self: *Self) !void {
+    var node_iter = self.nodes.valueIterator();
+    while (node_iter.next()) |node| {
+        const fail_probability = switch (node.ptr) {
+            .plant => self.probabilities.plant.fail,
+            .substation => self.probabilities.substation.fail,
+            .consumer => { continue; }
+        };
+        // Check if a node has failed.
+        const fail = self.prng.random().uintAtMost(Percentage, 100);
+        if (fail < fail_probability) {
+            // Store the failure event.
+            const severity = self.prng.random().uintAtMost(Percentage, 100);
+            try self.events.append(.{
+                .severity = percentageToSeverity(severity),
+                .time = self.current_time,
+                .kind = .Failure,
+                .source = node.name
+            });
+        }
+    }
+}
+
+fn checkLineFailures(self: *Self) !void {
+    var line_iter = self.lines.keyIterator();
+    while (line_iter.next()) |line_name| {
+        const fail_probability = self.probabilities.line.fail;
+        // Check if a line has failed.
+        const fail = self.prng.random().uintAtMost(Percentage, 100);
+        if (fail < fail_probability) {
+            // Store the failure event.
+            const severity = self.prng.random().uintAtMost(Percentage, 100);
+            try self.events.append(.{
+                .severity = percentageToSeverity(severity),
+                .time = self.current_time,
+                .kind = .Failure,
+                .source = line_name.*
+            });
+        }
+    }
+}
+
+fn updateState(self: *Self) !void {
+    // Only check for node failure every hour.
+    // TODO: This should happen every minute,
+    // but percentages would have to be floats
+    // instead of integers.
+    if (self.current_time.minute == 0) {
+        try self.checkNodeFailures();
+        try self.checkLineFailures();
+    }
+}
+
+pub fn printState(self: Self) void {
+    var nodes_inactive: u32 = 0;
+    var node_iter = self.nodes.iterator();
+    while (node_iter.next()) |node| {
+        if (!node.value_ptr.isActive()) {
+            nodes_inactive += 1;
+        }
+    }
+
+    var lines_inactive: u32 = 0;
+    var line_iter = self.lines.valueIterator();
+    while (line_iter.next()) |line| {
+        if (!line.*.enabled) {
+            lines_inactive += 1;
+        }
+    }
+
+    log.info(
+        "engine state:\n" ++
+        "nodes down: {d}/{d}\n" ++
+        "lines down: {d}/{d}",
+        .{
+            nodes_inactive,
+            self.nodes.count(),
+            lines_inactive,
+            self.lines.count()
+        }
+    );
+}
+
 pub fn step(self: *Self) !void {
-    for (self.spec.events) |event| {
+    try self.updateState();
+    // Run any events.
+    for (self.events.items) |event| {
         if (event.time.eql(self.current_time)) {
             try self.runEvent(event);
             if (@intFromEnum(event.severity) >= @intFromEnum(self.log_level)) {
